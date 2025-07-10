@@ -1,0 +1,189 @@
+{
+  "config": [
+    {
+      "id": "1",
+      "ultimoNsaSequencial": 205,
+      "parteFixaNsa": "04"
+    }
+  ],
+  "clientes": [
+    {
+      "id": "1",
+      "codigo": "10",
+      "nome": "Tech Solutions Ltda",
+      "documento": "12.345.678/0001-99",
+      "banco": "033",
+      "contaCorrente": "004300000010042006",
+      "ativo": true
+    },
+    {
+      "id": "2",
+      "codigo": "33",
+      "nome": "Inova Web Design",
+      "documento": "98.765.432/0001-11",
+      "banco": "033",
+      "contaCorrente": "004300000010038670",
+      "ativo": true
+    },
+    {
+      "id": "8484",
+      "nome": "Alex Caetano dos Santos",
+      "documento": "016.896.798./75",
+      "banco": "033",
+      "contaCorrente": "0043000009200151072",
+      "ativo": true,
+      "codigo": "152"
+    }
+  ],
+  "cobrancas": [
+    {
+      "id": "f06c",
+      "clienteId": 1,
+      "descricao": "Teste",
+      "valor": 10,
+      "vencimento": "2025-06-15",
+      "status": "Pendente",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "1256",
+      "clienteId": 2,
+      "descricao": "Colaborador",
+      "valor": 78.25,
+      "vencimento": "2025-06-20",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "365c",
+      "clienteId": 1,
+      "descricao": "Colaboração Espontânea",
+      "valor": 150.63,
+      "vencimento": "2025-06-22",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "ce3e",
+      "clienteId": 1,
+      "descricao": "Colaboração Espontânea",
+      "valor": 150,
+      "vencimento": "2025-06-22",
+      "status": "Pago"
+    },
+    {
+      "id": "6ca5",
+      "clienteId": 2,
+      "descricao": "Colaboração Espontânea",
+      "valor": 150,
+      "vencimento": "2025-06-22",
+      "status": "Pago"
+    },
+    {
+      "id": "d47a",
+      "clienteId": 2,
+      "descricao": "Colaboração Espontânea",
+      "valor": 78,
+      "vencimento": "2025-06-22",
+      "status": "Pago"
+    },
+    {
+      "id": "3ef4",
+      "clienteId": 2,
+      "descricao": "Colaboração Espontânea",
+      "valor": 69,
+      "vencimento": "2025-06-22",
+      "status": "Pago"
+    },
+    {
+      "id": "03db",
+      "clienteId": 1,
+      "descricao": "Colaboração Espontânea",
+      "valor": 100,
+      "vencimento": "2025-06-22",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "108e",
+      "clienteId": 2,
+      "descricao": "Colaboração Espontânea",
+      "valor": 96,
+      "vencimento": "2025-06-22",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "9207",
+      "clienteId": 8484,
+      "descricao": "Colaboração Espontânea",
+      "valor": 14,
+      "vencimento": "2025-06-22",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "4f58",
+      "clienteId": 8484,
+      "descricao": "Colaboração Espontânea",
+      "valor": 12,
+      "vencimento": "2025-06-22",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "ddc7",
+      "clienteId": 8484,
+      "descricao": "Colaboração Espontânea",
+      "valor": 100,
+      "vencimento": "2025-06-22",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "4d66",
+      "clienteId": 8484,
+      "descricao": "Colaboração Espontânea",
+      "valor": 123,
+      "vencimento": "2025-06-22",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "9829",
+      "clienteId": 1,
+      "descricao": "Colaboração Espontânea",
+      "valor": 150,
+      "vencimento": "2025-07-01",
+      "status": "Pago",
+      "statusRemessa": "gerada"
+    },
+    {
+      "id": "5005",
+      "clienteId": 8484,
+      "descricao": "Colaboração Espontânea",
+      "valor": 2500,
+      "vencimento": "2025-07-04",
+      "status": "Pago",
+      "statusRemessa": "pendente"
+    },
+    {
+      "id": "cb6e",
+      "clienteId": 2,
+      "descricao": "Colaboração Espontânea",
+      "valor": 225,
+      "vencimento": "2025-07-03",
+      "status": "Pago",
+      "statusRemessa": "pendente"
+    },
+    {
+      "id": "360c",
+      "clienteId": 1,
+      "descricao": "Colaboração Espontânea",
+      "valor": 36,
+      "vencimento": "2025-07-03",
+      "status": "Pago",
+      "statusRemessa": "pendente"
+    }
+  ]
+}
