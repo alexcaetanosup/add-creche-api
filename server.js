@@ -1,7 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
-
+const fs = require('fs');
+const path = require('path');
 // --- CONFIGURAÇÃO INICIAL ---
 const app = express();
 app.use(cors());
