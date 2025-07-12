@@ -115,7 +115,7 @@ app.put('/api/config/1', async (req, res) => {
     res.status(200).json(data[0]);
 });
 
-// Adicione esta nova rota ao seu server.js
+// Adicione esta nova rota ao seu server.js  (Download de arquivo)
 app.get('/api/download-arquivo/:nomeArquivo', (req, res) => {
     const { nomeArquivo } = req.params;
     const dataDir = process.env.RENDER ? '/data' : './';
@@ -130,6 +130,31 @@ app.get('/api/download-arquivo/:nomeArquivo', (req, res) => {
         });
     } else {
         res.status(404).send("Arquivo não encontrado.");
+    }
+});
+
+// Adicione esta rota ao seu server.js, junto com as outras
+
+app.get('/api/listar-arquivos', (req, res) => {
+    const dataDir = process.env.RENDER ? '/data' : './';
+
+    try {
+        // Lê todos os arquivos no diretório de dados
+        const todosOsArquivos = fs.readdirSync(dataDir);
+
+        // Filtra para pegar apenas os arquivos de remessa .json
+        const arquivosDeRemessa = todosOsArquivos.filter(
+            file => file.startsWith('remessa_') && file.endsWith('.json')
+        );
+
+        // Ordena do mais recente para o mais antigo (opcional, mas bom para UX)
+        arquivosDeRemessa.sort().reverse();
+
+        res.status(200).json(arquivosDeRemessa);
+
+    } catch (error) {
+        console.error("Erro ao listar arquivos de remessa:", error);
+        res.status(500).json({ message: "Não foi possível listar os arquivos de arquivamento." });
     }
 });
 
