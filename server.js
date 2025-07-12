@@ -139,15 +139,19 @@ app.get('/api/listar-arquivos', (req, res) => {
     const dataDir = process.env.RENDER ? '/data' : './';
 
     try {
-        // Lê todos os arquivos no diretório de dados
+        // Garante que o diretório de dados exista antes de tentar ler
+        if (!fs.existsSync(dataDir)) {
+            // Se o diretório não existe, não há arquivos para listar.
+            // Retorna um array vazio com sucesso.
+            return res.status(200).json([]);
+        }
+
         const todosOsArquivos = fs.readdirSync(dataDir);
 
-        // Filtra para pegar apenas os arquivos de remessa .json
         const arquivosDeRemessa = todosOsArquivos.filter(
             file => file.startsWith('remessa_') && file.endsWith('.json')
         );
 
-        // Ordena do mais recente para o mais antigo (opcional, mas bom para UX)
         arquivosDeRemessa.sort().reverse();
 
         res.status(200).json(arquivosDeRemessa);
