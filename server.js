@@ -115,6 +115,23 @@ app.put('/api/config/1', async (req, res) => {
     res.status(200).json(data[0]);
 });
 
+// Adicione esta nova rota ao seu server.js
+app.get('/api/download-arquivo/:nomeArquivo', (req, res) => {
+    const { nomeArquivo } = req.params;
+    const dataDir = process.env.RENDER ? '/data' : './';
+    const caminhoArquivo = path.join(dataDir, nomeArquivo);
+
+    if (fs.existsSync(caminhoArquivo)) {
+        res.download(caminhoArquivo, (err) => {
+            if (err) {
+                console.error("Erro ao baixar o arquivo:", err);
+                res.status(500).send("Não foi possível baixar o arquivo.");
+            }
+        });
+    } else {
+        res.status(404).send("Arquivo não encontrado.");
+    }
+});
 
 // --- ROTA DE ARQUIVAMENTO DE REMESSA ---
 // Esta rota é um processo mais complexo (uma "transação")
