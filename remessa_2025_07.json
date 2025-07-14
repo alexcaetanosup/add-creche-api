@@ -59,6 +59,26 @@
       "vencimento": "2025-07-12",
       "status": "Pendente",
       "statusRemessa": "pendente"
+    },
+    {
+      "id": 25,
+      "created_at": "2025-07-14T11:40:31.682377+00:00",
+      "clienteId": 4,
+      "descricao": "Colaboração Espontânea",
+      "valor": 75,
+      "vencimento": "2025-07-14",
+      "status": "Pago",
+      "statusRemessa": "pendente"
+    },
+    {
+      "id": 22,
+      "created_at": "2025-07-13T14:49:29.991477+00:00",
+      "clienteId": 4,
+      "descricao": "Colaboração Espontânea",
+      "valor": 123,
+      "vencimento": "2025-07-13",
+      "status": "Pago",
+      "statusRemessa": "pendente"
     }
   ]
 }
