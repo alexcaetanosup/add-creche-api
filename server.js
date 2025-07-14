@@ -6,6 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
+const multer = require('multer'); // Importa o multer para upload de arquivos
 
 // --- CONFIGURAÇÃO INICIAL ---
 const app = express();
@@ -21,158 +22,115 @@ if (!supabaseUrl || !supabaseKey) {
     process.exit(1);
 }
 
-// Cria o cliente Supabase com a correção para SSL em ambiente de desenvolvimento
 const supabase = createClient(supabaseUrl, supabaseKey, {
     global: {
         fetch: (url, options) => fetch(url, { ...options, ...(process.env.NODE_ENV !== 'production' && { rejectUnauthorized: false }) })
     }
 });
 
+// Configuração do multer para salvar o arquivo em memória
+const upload = multer({ storage: multer.memoryStorage() });
+
 
 // =================================================================
 // --- ROTAS DA API (DEFINIDAS EXPLICITAMENTE) ---
 // =================================================================
 
-// Rota de teste para verificar se a API está no ar
+// Rota de teste
 app.get('/api/healthcheck', (req, res) => {
     res.status(200).json({ status: 'ok', message: 'API está no ar e funcionando!' });
 });
 
-// --- ROTAS DE CLIENTES ---
-app.get('/api/clientes', async (req, res) => {
-    const { data, error } = await supabase.from('clientes').select('*').order('nome', { ascending: true });
-    if (error) {
-        console.error('Erro ao buscar clientes:', error);
-        return res.status(500).json({ error: error.message });
-    }
-    res.status(200).json(data);
-});
+// --- ROTAS CUSTOMIZADAS (para arquivos e processos especiais) ---
 
-app.post('/api/clientes', async (req, res) => {
-    const { data, error } = await supabase.from('clientes').insert(req.body).select();
-    if (error) {
-        console.error('Erro ao criar cliente:', error);
-        return res.status(400).json({ error: error.message });
+// Rota para processar o arquivo de retorno
+app.post('/api/processar-retorno', upload.single('arquivoRetorno'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ success: false, message: 'Nenhum arquivo enviado.' });
     }
-    res.status(201).json(data[0]);
-});
 
-app.put('/api/clientes/:id', async (req, res) => {
-    const { data, error } = await supabase.from('clientes').update(req.body).eq('id', req.params.id).select();
-    if (error) {
-        console.error('Erro ao atualizar cliente:', error);
-        return res.status(400).json({ error: error.message });
-    }
-    if (!data || data.length === 0) return res.status(404).json({ message: 'Cliente não encontrado' });
-    res.status(200).json(data[0]);
-});
+    const conteudoArquivo = req.file.buffer.toString('utf-8');
+    const linhas = conteudoArquivo.split(/\r?\n/);
 
-app.delete('/api/clientes/:id', async (req, res) => {
-    const { error } = await supabase.from('clientes').delete().eq('id', req.params.id);
-    if (error) {
-        console.error('Erro ao deletar cliente:', error);
-        return res.status(400).json({ error: error.message });
-    }
-    res.status(204).send();
-});
+    let processados = 0;
+    let pagos = 0;
+    let rejeitados = 0;
+    let errosDeAtualizacao = 0;
 
-// --- ROTAS DE COBRANÇAS ---
-app.get('/api/cobrancas', async (req, res) => {
-    const { data, error } = await supabase.from('cobrancas').select('*').order('vencimento', { ascending: false });
-    if (error) {
-        console.error('Erro ao buscar cobranças:', error);
-        return res.status(500).json({ error: error.message });
-    }
-    res.status(200).json(data);
-});
+    const promises = linhas.map(async (linha) => {
+        if (linha.trim() === '' || !linha.startsWith('T')) {
+            return;
+        }
+        processados++;
 
-app.post('/api/cobrancas', async (req, res) => {
-    const { data, error } = await supabase.from('cobrancas').insert(req.body).select();
-    if (error) {
-        console.error('Erro ao criar cobrança:', error);
-        return res.status(400).json({ error: error.message });
-    }
-    res.status(201).json(data[0]);
-});
+        // Lógica de Parse (AJUSTE CONFORME SEU LAYOUT REAL)
+        const identificadorCobranca = linha.substring(1, 17).trim();
+        const codigoOcorrencia = linha.substring(17, 19).trim();
 
-app.put('/api/cobrancas/:id', async (req, res) => {
-    const { data, error } = await supabase.from('cobrancas').update(req.body).eq('id', req.params.id).select();
-    if (error) {
-        console.error('Erro ao atualizar cobrança:', error);
-        return res.status(400).json({ error: error.message });
-    }
-    if (!data || data.length === 0) return res.status(404).json({ message: 'Cobrança não encontrada' });
-    res.status(200).json(data[0]);
-});
+        let novoStatus = null;
+        if (codigoOcorrencia === '00' || codigoOcorrencia === 'PG') {
+            novoStatus = 'Pago';
+            pagos++;
+        } else {
+            novoStatus = `Rejeitado (${codigoOcorrencia})`;
+            rejeitados++;
+        }
 
-app.delete('/api/cobrancas/:id', async (req, res) => {
-    const { error } = await supabase.from('cobrancas').delete().eq('id', req.params.id);
-    if (error) {
-        console.error('Erro ao deletar cobrança:', error);
-        return res.status(400).json({ error: error.message });
+        if (novoStatus && identificadorCobranca) {
+            // Assume que o 'identificadorCobranca' no arquivo corresponde ao 'id' no banco
+            const { error } = await supabase
+                .from('cobrancas')
+                .update({ status: novoStatus })
+                .eq('id', identificadorCobranca);
+
+            if (error) {
+                console.error(`Erro ao atualizar cobrança ${identificadorCobranca}:`, error.message);
+                errosDeAtualizacao++;
+            }
+        }
+    });
+
+    try {
+        await Promise.all(promises);
+        res.status(200).json({
+            success: true,
+            message: 'Arquivo de retorno processado!',
+            detalhes: {
+                "Total de Transações no Arquivo": processados,
+                "Cobranças Pagas": pagos,
+                "Cobranças Rejeitadas/Outras": rejeitados,
+                "Falhas na Atualização": errosDeAtualizacao,
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'Ocorreu um erro durante o processamento em lote.' });
     }
-    res.status(204).send();
 });
 
 
-// --- ROTA DE CONFIG (TRATAMENTO ESPECIAL) ---
-app.get('/api/config', async (req, res) => {
-    const { data, error } = await supabase.from('config').select('*').eq('id', 1).single();
-    if (error) {
-        console.error('Erro ao buscar config:', error);
-        return res.status(500).json({ error: error.message });
-    }
-    res.status(200).json(data);
-});
-
-app.put('/api/config/:id', async (req, res) => {
-    // Apenas permite atualizar o registro com id=1
-    if (String(req.params.id) !== '1') {
-        return res.status(403).json({ message: 'Operação não permitida.' });
-    }
-    const { data, error } = await supabase.from('config').update(req.body).eq('id', 1).select();
-    if (error) {
-        console.error('Erro ao atualizar config:', error);
-        return res.status(400).json({ error: error.message });
-    }
-    res.status(200).json(data[0]);
-});
-
-
-// --- ROTAS DE ARQUIVAMENTO (que usam o sistema de arquivos) ---
 const dataDir = process.env.RENDER_INSTANCE_ID ? '/data' : './';
 
 app.get('/api/listar-arquivos', (req, res) => {
-    console.log(`[listar-arquivos] Lendo diretório: ${dataDir}`);
     try {
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
+        if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
         const files = fs.readdirSync(dataDir).filter(f => f.startsWith('remessa_') && f.endsWith('.json'));
         res.status(200).json(files.sort().reverse());
     } catch (error) {
-        console.error("[listar-arquivos] Erro:", error);
         res.status(500).json({ message: "Erro ao listar arquivos." });
     }
 });
 
 app.get('/api/download-arquivo/:nomeArquivo', (req, res) => {
-    const { nomeArquivo } = req.params;
-    const caminhoArquivo = path.join(dataDir, nomeArquivo);
-    if (fs.existsSync(caminhoArquivo)) {
-        res.download(caminhoArquivo);
-    } else {
-        res.status(404).json({ message: "Arquivo de arquivamento não encontrado." });
-    }
+    const caminhoArquivo = path.join(dataDir, req.params.nomeArquivo);
+    if (fs.existsSync(caminhoArquivo)) res.download(caminhoArquivo);
+    else res.status(404).json({ message: "Arquivo não encontrado." });
 });
 
 app.post('/api/arquivar-remessa', async (req, res) => {
     const { cobrancasParaArquivar, mesAno } = req.body;
-    if (!cobrancasParaArquivar || cobrancasParaArquivar.length === 0) {
+    if (!cobrancasParaArquivar || !cobrancasParaArquivar.length) {
         return res.status(400).json({ message: 'Nenhuma cobrança para arquivar.' });
     }
-
-    // 1. Salva um backup em arquivo JSON
     const nomeArquivo = `remessa_${mesAno}.json`;
     const caminhoArquivo = path.join(dataDir, nomeArquivo);
     try {
@@ -182,22 +140,72 @@ app.post('/api/arquivar-remessa', async (req, res) => {
         }
         dadosArquivados.cobrancas.push(...cobrancasParaArquivar);
         fs.writeFileSync(caminhoArquivo, JSON.stringify(dadosArquivados, null, 2));
-        console.log(`Backup da remessa salvo em ${nomeArquivo}`);
     } catch (error) {
-        console.error("Erro ao salvar arquivo de backup da remessa:", error);
-        // Não interrompe o fluxo, mas loga o erro. A operação principal é deletar do DB.
+        console.error("Erro ao salvar arquivo de backup:", error);
     }
-
-    // 2. Deleta as cobranças do banco de dados principal
     try {
         const idsParaRemover = cobrancasParaArquivar.map(c => c.id);
         const { error } = await supabase.from('cobrancas').delete().in('id', idsParaRemover);
         if (error) throw error;
-        res.status(200).json({ message: 'Remessa finalizada e cobranças removidas com sucesso!' });
+        res.status(200).json({ message: 'Remessa finalizada e cobranças removidas!' });
     } catch (error) {
-        console.error("[arquivar-remessa] Erro do Supabase ao deletar:", error);
         res.status(500).json({ message: error.message });
     }
+});
+
+// --- ROTAS DE CRUD PARA SUPABASE ---
+
+app.get('/api/clientes', async (req, res) => {
+    const { data, error } = await supabase.from('clientes').select('*').order('nome');
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(200).json(data);
+});
+app.post('/api/clientes', async (req, res) => {
+    const { data, error } = await supabase.from('clientes').insert(req.body).select();
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(201).json(data[0]);
+});
+app.put('/api/clientes/:id', async (req, res) => {
+    const { data, error } = await supabase.from('clientes').update(req.body).eq('id', req.params.id).select();
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(200).json(data[0]);
+});
+app.delete('/api/clientes/:id', async (req, res) => {
+    const { error } = await supabase.from('clientes').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(204).send();
+});
+
+app.get('/api/cobrancas', async (req, res) => {
+    const { data, error } = await supabase.from('cobrancas').select('*').order('vencimento');
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(200).json(data);
+});
+app.post('/api/cobrancas', async (req, res) => {
+    const { data, error } = await supabase.from('cobrancas').insert(req.body).select();
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(201).json(data[0]);
+});
+app.put('/api/cobrancas/:id', async (req, res) => {
+    const { data, error } = await supabase.from('cobrancas').update(req.body).eq('id', req.params.id).select();
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(200).json(data[0]);
+});
+app.delete('/api/cobrancas/:id', async (req, res) => {
+    const { error } = await supabase.from('cobrancas').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(204).send();
+});
+
+app.get('/api/config', async (req, res) => {
+    const { data, error } = await supabase.from('config').select('*').eq('id', 1).single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(200).json(data);
+});
+app.put('/api/config/:id', async (req, res) => {
+    const { data, error } = await supabase.from('config').update(req.body).eq('id', 1).select();
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(200).json(data[0]);
 });
 
 
