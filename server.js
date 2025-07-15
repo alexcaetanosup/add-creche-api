@@ -6,7 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
-const multer = require('multer'); // Importa o multer para upload de arquivos
+const multer = require('multer');
 
 // --- CONFIGURAÇÃO INICIAL ---
 const app = express();
@@ -28,61 +28,61 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
     }
 });
 
-// Configuração do multer para salvar o arquivo em memória
+// Configuração do multer para upload de arquivos em memória
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Define o diretório de dados (persistente na Render, local para desenvolvimento)
+const dataDir = process.env.RENDER_INSTANCE_ID ? '/data' : './';
+
 
 // =================================================================
-// --- ROTAS DA API (DEFINIDAS EXPLICITAMENTE) ---
+// --- ROTAS DA API ---
 // =================================================================
 
-// Rota de teste
+// Rota de teste para verificar se a API está no ar
 app.get('/api/healthcheck', (req, res) => {
     res.status(200).json({ status: 'ok', message: 'API está no ar e funcionando!' });
 });
 
-// --- ROTAS CUSTOMIZADAS (para arquivos e processos especiais) ---
 
-// Rota para processar o arquivo de retorno
+// --- ROTAS CUSTOMIZADAS (PROCESSOS ESPECIAIS) ---
+
+app.post('/api/marcar-remessa', async (req, res) => {
+    const { idsParaMarcar, nsaDaRemessa } = req.body;
+    if (!idsParaMarcar || idsParaMarcar.length === 0 || !nsaDaRemessa) {
+        return res.status(400).json({ message: 'IDs das cobranças e o NSA da remessa são obrigatórios.' });
+    }
+    try {
+        const { data, error } = await supabase
+            .from('cobrancas')
+            .update({ nsa_remessa: nsaDaRemessa })
+            .in('id', idsParaMarcar);
+        if (error) throw error;
+        res.status(200).json({ message: `Cobranças marcadas com sucesso com o NSA ${nsaDaRemessa}.` });
+    } catch (error) {
+        console.error("[marcar-remessa] Erro do Supabase:", error);
+        res.status(500).json({ message: `Erro ao marcar remessa: ${error.message}` });
+    }
+});
+
 app.post('/api/processar-retorno', upload.single('arquivoRetorno'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ success: false, message: 'Nenhum arquivo enviado.' });
     }
-
     const conteudoArquivo = req.file.buffer.toString('utf-8');
     const linhas = conteudoArquivo.split(/\r?\n/);
-
-    let processados = 0;
-    let pagos = 0;
-    let rejeitados = 0;
-    let errosDeAtualizacao = 0;
+    let processados = 0, pagos = 0, rejeitados = 0, errosDeAtualizacao = 0;
 
     const promises = linhas.map(async (linha) => {
-        if (linha.trim() === '' || !linha.startsWith('T')) {
-            return;
-        }
+        if (linha.trim() === '' || !linha.startsWith('T')) return;
         processados++;
-
-        // Lógica de Parse (AJUSTE CONFORME SEU LAYOUT REAL)
         const identificadorCobranca = linha.substring(1, 17).trim();
         const codigoOcorrencia = linha.substring(17, 19).trim();
-
-        let novoStatus = null;
-        if (codigoOcorrencia === '00' || codigoOcorrencia === 'PG') {
-            novoStatus = 'Pago';
-            pagos++;
-        } else {
-            novoStatus = `Rejeitado (${codigoOcorrencia})`;
-            rejeitados++;
-        }
+        let novoStatus = (codigoOcorrencia === '00' || codigoOcorrencia === 'PG') ? 'Pago' : `Rejeitado (${codigoOcorrencia})`;
+        if (novoStatus === 'Pago') pagos++; else rejeitados++;
 
         if (novoStatus && identificadorCobranca) {
-            // Assume que o 'identificadorCobranca' no arquivo corresponde ao 'id' no banco
-            const { error } = await supabase
-                .from('cobrancas')
-                .update({ status: novoStatus })
-                .eq('id', identificadorCobranca);
-
+            const { error } = await supabase.from('cobrancas').update({ status: novoStatus }).eq('id', identificadorCobranca);
             if (error) {
                 console.error(`Erro ao atualizar cobrança ${identificadorCobranca}:`, error.message);
                 errosDeAtualizacao++;
@@ -93,22 +93,13 @@ app.post('/api/processar-retorno', upload.single('arquivoRetorno'), async (req, 
     try {
         await Promise.all(promises);
         res.status(200).json({
-            success: true,
-            message: 'Arquivo de retorno processado!',
-            detalhes: {
-                "Total de Transações no Arquivo": processados,
-                "Cobranças Pagas": pagos,
-                "Cobranças Rejeitadas/Outras": rejeitados,
-                "Falhas na Atualização": errosDeAtualizacao,
-            }
+            success: true, message: 'Arquivo de retorno processado!',
+            detalhes: { "Transações no Arquivo": processados, "Pagas": pagos, "Rejeitadas": rejeitados, "Falhas": errosDeAtualizacao }
         });
     } catch (e) {
-        res.status(500).json({ success: false, message: 'Ocorreu um erro durante o processamento em lote.' });
+        res.status(500).json({ success: false, message: 'Erro durante o processamento em lote.' });
     }
 });
-
-
-const dataDir = process.env.RENDER_INSTANCE_ID ? '/data' : './';
 
 app.get('/api/listar-arquivos', (req, res) => {
     try {
@@ -126,35 +117,10 @@ app.get('/api/download-arquivo/:nomeArquivo', (req, res) => {
     else res.status(404).json({ message: "Arquivo não encontrado." });
 });
 
-app.post('/api/arquivar-remessa', async (req, res) => {
-    const { cobrancasParaArquivar, mesAno } = req.body;
-    if (!cobrancasParaArquivar || !cobrancasParaArquivar.length) {
-        return res.status(400).json({ message: 'Nenhuma cobrança para arquivar.' });
-    }
-    const nomeArquivo = `remessa_${mesAno}.json`;
-    const caminhoArquivo = path.join(dataDir, nomeArquivo);
-    try {
-        let dadosArquivados = { cobrancas: [] };
-        if (fs.existsSync(caminhoArquivo)) {
-            dadosArquivados = JSON.parse(fs.readFileSync(caminhoArquivo, 'utf-8'));
-        }
-        dadosArquivados.cobrancas.push(...cobrancasParaArquivar);
-        fs.writeFileSync(caminhoArquivo, JSON.stringify(dadosArquivados, null, 2));
-    } catch (error) {
-        console.error("Erro ao salvar arquivo de backup:", error);
-    }
-    try {
-        const idsParaRemover = cobrancasParaArquivar.map(c => c.id);
-        const { error } = await supabase.from('cobrancas').delete().in('id', idsParaRemover);
-        if (error) throw error;
-        res.status(200).json({ message: 'Remessa finalizada e cobranças removidas!' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
 
-// --- ROTAS DE CRUD PARA SUPABASE ---
+// --- ROTAS DE CRUD PADRÃO ---
 
+// CLIENTES
 app.get('/api/clientes', async (req, res) => {
     const { data, error } = await supabase.from('clientes').select('*').order('nome');
     if (error) return res.status(500).json({ error: error.message });
@@ -176,6 +142,7 @@ app.delete('/api/clientes/:id', async (req, res) => {
     res.status(204).send();
 });
 
+// COBRANÇAS
 app.get('/api/cobrancas', async (req, res) => {
     const { data, error } = await supabase.from('cobrancas').select('*').order('vencimento');
     if (error) return res.status(500).json({ error: error.message });
@@ -197,6 +164,7 @@ app.delete('/api/cobrancas/:id', async (req, res) => {
     res.status(204).send();
 });
 
+// CONFIG
 app.get('/api/config', async (req, res) => {
     const { data, error } = await supabase.from('config').select('*').eq('id', 1).single();
     if (error) return res.status(500).json({ error: error.message });
