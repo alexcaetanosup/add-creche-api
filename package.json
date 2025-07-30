@@ -1,20 +1,25 @@
 {
-    "name": "add-creche-api",
-    "version": "1.0.0",
-    "main": "server.js",
-    "scripts": {
-        "start": "node server.js"
-    },
-    "dependencies": {
-        "@supabase/supabase-js": "^2.50.5",
-        "cors": "^2.8.5",
-        "dotenv": "^17.2.0",
-        "express": "^4.19.2",
-        "multer": "^2.0.1",
-        "node-fetch": "^2.7.0",
-        "sqlite3": "^5.1.7"
-    },
-    "engines": {
-        "node": "18.x"
-    }
+  "name": "add-creche-api",
+  "version": "1.0.0",
+  "description": "Backend API para o seu aplicativo com SQLite",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "@supabase/supabase-js": "^2.50.5",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
+    "express": "^4.19.2",
+    "multer": "^2.0.1",
+    "nodemailer": "^6.9.14",
+    "node-fetch": "^2.7.0",
+    "sqlite3": "^5.1.7",
+    "uuid": "^10.0.0"
+  },
+  "engines": {
+    "node": "20.x"
+  }
 }

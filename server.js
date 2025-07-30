@@ -6,6 +6,9 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 const sqlite3 = require("sqlite3").verbose(); // Importa o sqlite3
+const { v4: uuidv4 } = require("uuid"); // Para gerar IDs únicos (UUIDs)
+const bcrypt = require("bcryptjs"); // Para hash de senhas
+const nodemailer = require("nodemailer"); // Para envio de e-mails
 
 // --- CONFIGURAÇÃO INICIAL ---
 const app = express();
@@ -47,6 +50,24 @@ const db = new sqlite3.Database(dbPath, (err) => {
       }
     );
 
+    // Tabela 'usuarios' (para autenticação)
+    // Usamos esta tabela para o sistema de login e redefinição de senha.
+    // A senha_hashed armazenará a senha do usuário após ser processada por bcrypt.
+    db.run(
+      `
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                senha_hashed TEXT NOT NULL,
+                nome TEXT, -- Opcional, se quiser associar um nome ao usuário logável
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        `,
+      (err) => {
+        if (err) console.error("Erro ao criar tabela 'usuarios':", err.message);
+      }
+    );
+
     // Tabela 'cobrancas'
     // Adicionada FOREIGN KEY para manter a integridade referencial com a tabela 'clientes'.
     db.run(
@@ -64,6 +85,28 @@ const db = new sqlite3.Database(dbPath, (err) => {
       (err) => {
         if (err)
           console.error("Erro ao criar tabela 'cobrancas':", err.message);
+      }
+    );
+
+    // Tabela 'password_reset_tokens' (para redefinição de senha)
+    // Armazena tokens temporários para o processo de "esqueceu a senha".
+    db.run(
+      `
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id TEXT PRIMARY KEY,           -- Um UUID para o token
+                user_id TEXT NOT NULL,         -- ID do usuário que solicitou a redefinição
+                token TEXT UNIQUE NOT NULL,    -- O token único enviado por e-mail
+                expires_at TEXT NOT NULL,      -- Data/hora de expiração do token (formato YYYY-MM-DD HH:MM:SS)
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES usuarios(id) ON DELETE CASCADE
+            )
+        `,
+      (err) => {
+        if (err)
+          console.error(
+            "Erro ao criar tabela 'password_reset_tokens':",
+            err.message
+          );
       }
     );
 
@@ -93,7 +136,42 @@ const db = new sqlite3.Database(dbPath, (err) => {
           console.error("Erro ao inserir configuração inicial:", err.message);
       }
     );
+
+    // --- EXEMPLO: Criar um usuário admin inicial (para testes) ---
+    // Você pode remover isso em produção ou ter um processo de registro.
+    // Senha inicial: 'admin123' (será hashed)
+    bcrypt.hash("admin123", 10, (hashErr, hashedPassword) => {
+      if (hashErr) {
+        console.error("Erro ao hashear senha de admin inicial:", hashErr);
+        return;
+      }
+      db.run(
+        `
+                INSERT OR IGNORE INTO usuarios (id, email, senha_hashed, nome) VALUES (?, ?, ?, ?)
+            `,
+        [uuidv4(), "admin@example.com", hashedPassword, "Administrador"],
+        (insertUserErr) => {
+          if (insertUserErr)
+            console.error(
+              "Erro ao inserir usuário admin inicial:",
+              insertUserErr.message
+            );
+          else console.log("Usuário admin inicial criado ou já existente.");
+        }
+      );
+    });
   });
+});
+
+// Configuração do Nodemailer (use variáveis de ambiente para segurança!)
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST, // Ex: 'smtp.gmail.com'
+  port: process.env.EMAIL_PORT, // Ex: 587 (para TLS) ou 465 (para SSL/Implicit TLS)
+  secure: process.env.EMAIL_SECURE === "true", // true para 465, false para outras portas como 587
+  auth: {
+    user: process.env.EMAIL_USER, // Seu e-mail de envio
+    pass: process.env.EMAIL_PASS, // Sua senha/app password do e-mail
+  },
 });
 
 // Configuração do multer para upload de arquivos em memória
@@ -108,6 +186,221 @@ app.get("/api/healthcheck", (req, res) => {
   res
     .status(200)
     .json({ status: "ok", message: "API está no ar e funcionando!" });
+});
+
+// --- ROTAS DE AUTENTICAÇÃO E REDEFINIÇÃO DE SENHA ---
+
+// Rota de Login (exemplo básico)
+app.post("/api/login", (req, res) => {
+  const { email, senha } = req.body;
+  if (!email || !senha) {
+    return res
+      .status(400)
+      .json({ message: "E-mail e senha são obrigatórios." });
+  }
+
+  db.get(
+    "SELECT id, senha_hashed FROM usuarios WHERE email = ?",
+    [email],
+    async (err, user) => {
+      if (err) {
+        console.error("Erro ao buscar usuário para login:", err.message);
+        return res.status(500).json({ message: "Erro interno do servidor." });
+      }
+      if (!user) {
+        return res.status(401).json({ message: "E-mail ou senha inválidos." });
+      }
+
+      const match = await bcrypt.compare(senha, user.senha_hashed);
+      if (!match) {
+        return res.status(401).json({ message: "E-mail ou senha inválidos." });
+      }
+
+      // TODO: Em um app real, aqui você geraria um JWT (JSON Web Token)
+      // e o enviaria de volta ao cliente para autenticação nas próximas requisições.
+      res.status(200).json({ message: "Login bem-sucedido!", userId: user.id });
+    }
+  );
+});
+
+// Rota para solicitar redefinição de senha
+app.post("/api/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ message: "E-mail é obrigatório." });
+  }
+
+  db.get(
+    "SELECT id FROM usuarios WHERE email = ?",
+    [email],
+    async (err, user) => {
+      if (err) {
+        console.error("Erro ao buscar usuário para redefinição:", err.message);
+        return res.status(500).json({ message: "Erro interno do servidor." });
+      }
+      // É uma boa prática de segurança não informar se o e-mail não existe
+      if (!user) {
+        console.log(
+          `Tentativa de redefinição de senha para e-mail não registrado: ${email}`
+        );
+        return res.status(200).json({
+          message:
+            "Se o e-mail estiver registrado, um link de redefinição será enviado.",
+        });
+      }
+
+      const userId = user.id;
+      const token = uuidv4(); // Gera um token único
+      // Token expira em 1 hora (3600000 milissegundos)
+      const expiresAt = new Date(Date.now() + 3600000).toISOString();
+
+      // Insere o token no banco de dados
+      db.run(
+        "INSERT INTO password_reset_tokens (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)",
+        [uuidv4(), userId, token, expiresAt],
+        async function (insertErr) {
+          if (insertErr) {
+            console.error(
+              "Erro ao salvar token de redefinição:",
+              insertErr.message
+            );
+            return res
+              .status(500)
+              .json({ message: "Erro ao gerar token de redefinição." });
+          }
+
+          // URL para o frontend (ajuste conforme a URL real do seu frontend!)
+          // Use a variável de ambiente FRONTEND_URL
+          const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+
+          try {
+            await transporter.sendMail({
+              from: process.env.EMAIL_USER, // Seu e-mail de envio configurado no .env
+              to: email,
+              subject: "Redefinição de Senha para o seu Aplicativo",
+              html: `
+                            <p>Olá,</p>
+                            <p>Você solicitou uma redefinição de senha para a sua conta.</p>
+                            <p>Para redefinir sua senha, clique no link abaixo:</p>
+                            <p><a href="${resetUrl}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Redefinir Senha</a></p>
+                            <p>Este link é válido por 1 hora. Se você não solicitou esta redefinição, por favor, ignore este e-mail.</p>
+                            <br>
+                            <p>Atenciosamente,</p>
+                            <p>Sua Equipe de Suporte</p>
+                        `,
+            });
+            res.status(200).json({
+              message:
+                "Se o e-mail estiver registrado, um link de redefinição será enviado.",
+            });
+          } catch (emailError) {
+            console.error("Erro ao enviar e-mail de redefinição:", emailError);
+            // É importante retornar uma mensagem genérica aqui também para não dar pistas a atacantes
+            res.status(500).json({
+              message:
+                "Erro ao enviar e-mail de redefinição. Tente novamente mais tarde.",
+            });
+          }
+        }
+      );
+    }
+  );
+});
+
+// Rota para redefinir a senha
+app.post("/api/reset-password", async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) {
+    return res
+      .status(400)
+      .json({ message: "Token e nova senha são obrigatórios." });
+  }
+
+  db.get(
+    "SELECT user_id, expires_at FROM password_reset_tokens WHERE token = ?",
+    [token],
+    async (err, resetToken) => {
+      if (err) {
+        console.error("Erro ao buscar token de redefinição:", err.message);
+        return res.status(500).json({ message: "Erro interno do servidor." });
+      }
+      // Se o token não existe ou já expirou
+      if (!resetToken || new Date(resetToken.expires_at) < new Date()) {
+        // Opcional: deletar token expirado/inválido para limpeza do DB
+        if (resetToken) {
+          db.run("DELETE FROM password_reset_tokens WHERE token = ?", [token]);
+        }
+        return res.status(400).json({
+          message:
+            "Token inválido ou expirado. Por favor, solicite uma nova redefinição.",
+        });
+      }
+
+      const userId = resetToken.user_id;
+      const hashedPassword = await bcrypt.hash(newPassword, 10); // Hash da nova senha
+
+      // Inicia uma transação para garantir que ambas as operações (atualizar senha e deletar token)
+      // ocorram com sucesso ou nenhuma delas ocorra (atomicidade).
+      db.serialize(() => {
+        db.run("BEGIN TRANSACTION;", (beginErr) => {
+          if (beginErr) {
+            console.error("Erro ao iniciar transação:", beginErr.message);
+            return res
+              .status(500)
+              .json({ message: "Erro interno do servidor." });
+          }
+
+          db.run(
+            "UPDATE usuarios SET senha_hashed = ? WHERE id = ?",
+            [hashedPassword, userId],
+            function (updateErr) {
+              if (updateErr) {
+                console.error(
+                  "Erro ao atualizar senha do usuário:",
+                  updateErr.message
+                );
+                db.run("ROLLBACK;"); // Reverte a transação em caso de erro
+                return res
+                  .status(500)
+                  .json({ message: "Erro ao redefinir senha." });
+              }
+
+              db.run(
+                "DELETE FROM password_reset_tokens WHERE token = ?",
+                [token],
+                function (deleteErr) {
+                  if (deleteErr) {
+                    console.error(
+                      "Erro ao deletar token de redefinição:",
+                      deleteErr.message
+                    );
+                    db.run("ROLLBACK;"); // Reverte a transação em caso de erro
+                    return res
+                      .status(500)
+                      .json({ message: "Erro ao redefinir senha." });
+                  }
+                  db.run("COMMIT;", (commitErr) => {
+                    if (commitErr) {
+                      console.error(
+                        "Erro ao finalizar transação (COMMIT):",
+                        commitErr.message
+                      );
+                      return res
+                        .status(500)
+                        .json({ message: "Erro interno do servidor." });
+                    }
+                    res
+                      .status(200)
+                      .json({ message: "Senha redefinida com sucesso!" });
+                  });
+                }
+              );
+            }
+          );
+        });
+      });
+    }
+  );
 });
 
 // --- ROTAS CUSTOMIZADAS (PROCESSOS ESPECIAIS) ---
