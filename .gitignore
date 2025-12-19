@@ -42,3 +42,5 @@ db.json
 
 # Ignorar arquivos de log
 *.log
+
+package-lock.json
