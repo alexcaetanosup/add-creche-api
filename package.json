@@ -2,6 +2,17 @@
   "name": "add-creche-api",
   "version": "1.0.0",
   "description": "Backend API para o seu aplicativo com SQLite",
+  "homepage": "https://github.com/alexcaetanosup/add-creche-api#readme",
+  "bugs": {
+    "url": "https://github.com/alexcaetanosup/add-creche-api/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexcaetanosup/add-creche-api.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
