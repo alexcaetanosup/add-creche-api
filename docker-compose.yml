@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Serviço do Banco de Dados PostgreSQL
+  db:
+    image: postgres:14-alpine
+    container_name: add-creche-postgres
+    restart: always
+    environment:
+      # Variáveis usadas pelo container Postgres
+      POSTGRES_USER: appuser 
+      # Substitua por uma senha real e forte!
+      POSTGRES_PASSWORD: senhadoapp123   
+      POSTGRES_DB: add_creche_db
+    # Porta mapeada (opcional, mas útil para acessar via PgAdmin ou DBeaver)
+    ports:
+      - "5432:5432"
+    # Volume para persistir os dados do BD mesmo após o container ser derrubado
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
+
+  # Serviço da Sua Aplicação Node.js
+  api:
+    # Assumindo que você tem um Dockerfile na raiz do projeto
+    build: . 
+    container_name: add-creche-api
+    restart: always
+    ports:
+      - "3001:3001"
+    # Garante que o BD suba antes da API
+    depends_on:
+      - db
+    # Variáveis de ambiente que sua API usará para se conectar ao serviço 'db'
+    environment:
+      # O HOST é o nome do serviço (db) definido acima
+      DB_HOST: db 
+      DB_PORT: 5432
+      DB_USER: appuser
+      DB_PASSWORD: senhadoapp123
+      DB_NAME: add_creche_db
+      PORT: 3001
+      # Mantenha outras variáveis de ambiente necessárias para a API (e.g., tokens, chaves)
+      # ...
+      
+volumes:
+  # Definição do volume para persistência dos dados
+  postgres_data:
