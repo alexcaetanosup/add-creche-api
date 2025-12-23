@@ -89,6 +89,37 @@ app.get ('/api/clientes', async (req, res) => {
 });
 
 // Adicione aqui suas outras rotas (POST, PUT, DELETE, etc.)
+// Adicione esta nova rota no seu server.js, logo após a rota GET /api/clientes
+
+app.post ('/api/clientes', async (req, res) => {
+  if (!db) return res.status (500).send ('Banco de dados não conectado.');
+
+  // 1. Receber os dados do frontend
+  const {nome, email, telefone} = req.body; // Adapte para os campos corretos
+
+  if (!nome) {
+    return res.status (400).json ({error: 'O nome do cliente é obrigatório.'});
+  }
+
+  try {
+    // 2. Montar a query SQL (Exemplo de INSERT)
+    const query =
+      'INSERT INTO clientes (nome, email, telefone) VALUES ($1, $2, $3) RETURNING *';
+    const values = [nome, email, telefone];
+
+    // 3. Executar a inserção
+    const result = await db.query (query, values);
+
+    // 4. Retornar sucesso (201 Created)
+    res.status (201).json (result.rows[0]);
+  } catch (err) {
+    console.error ('Erro ao salvar cliente:', err.message);
+    // Retornar erro 500 para o frontend
+    res
+      .status (500)
+      .json ({error: 'Erro interno do servidor ao salvar cliente.'});
+  }
+});
 
 // 7. INICIALIZAÇÃO DO SERVIDOR
 app.listen (port, () => {
