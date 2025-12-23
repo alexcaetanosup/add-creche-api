@@ -136,12 +136,10 @@ app.post ('/api/clientes', async (req, res) => {
   } catch (err) {
     console.error ('Erro ao salvar cliente (POST):', err.message);
     // Retorna o erro exato do DB no modo de desenvolvimento, ou um genérico em produção
-    res
-      .status (500)
-      .json ({
-        error: 'Erro interno do servidor ao salvar cliente.',
-        detail: err.message,
-      });
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao salvar cliente.',
+      detail: err.message,
+    });
   }
 });
 
@@ -184,12 +182,10 @@ app.put ('/api/clientes/:id', async (req, res) => {
   } catch (err) {
     // O erro 'cite_start is not defined' foi corrigido aqui, usando apenas err.message
     console.error ('Erro ao atualizar cliente (PUT):', err.message);
-    res
-      .status (500)
-      .json ({
-        error: 'Erro interno do servidor ao atualizar cliente.',
-        detail: err.message,
-      });
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao atualizar cliente.',
+      detail: err.message,
+    });
   }
 });
 
@@ -207,12 +203,10 @@ app.get ('/api/clientes', async (req, res) => {
     res.json (result.rows);
   } catch (err) {
     console.error ('Erro ao buscar clientes (GET):', err.message);
-    res
-      .status (500)
-      .json ({
-        error: 'Erro interno do servidor ao buscar clientes.',
-        detail: err.message,
-      });
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao buscar clientes.',
+      detail: err.message,
+    });
   }
 });
 
