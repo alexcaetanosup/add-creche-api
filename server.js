@@ -212,6 +212,33 @@ app.get ('/api/clientes', async (req, res) => {
 
 // Adicione a rota de Cobranças no seu server.js
 // ...
+// app.get ('/api/cobrancas', async (req, res) => {
+//   if (!db)
+//     return res
+//       .status (500)
+//       .send ('Servidor sem conexão ativa com o banco de dados.');
+
+//   try {
+//     // QUERY: Confere com a estrutura cobrancas(id, clienteId, descricao, valor, vencimento, status, statusRemessa)
+//     const result = await db.query (`
+//             SELECT id, "clienteId", descricao, valor, vencimento, status, "statusRemessa"
+//             FROM cobrancas
+//             ORDER BY vencimento DESC
+//         `);
+//     res.json (result.rows);
+//   } catch (err) {
+//     console.error ('Erro ao buscar cobranças (GET):', err.message);
+//     res
+//       .status (500)
+//       .json ({
+//         error: 'Erro interno do servidor ao buscar cobranças.',
+//         detail: err.message,
+//       });
+//   }
+// });
+
+// ROTAS COBRANÇAS
+// Rota para BUSCAR todas as cobranças (GET)
 app.get ('/api/cobrancas', async (req, res) => {
   if (!db)
     return res
@@ -219,7 +246,8 @@ app.get ('/api/cobrancas', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   try {
-    // QUERY: Confere com a estrutura cobrancas(id, clienteId, descricao, valor, vencimento, status, statusRemessa)
+    // A query utiliza aspas duplas para colunas com letras maiúsculas ou mixed case,
+    // conforme é comum no PostgreSQL, especialmente para 'clienteId' e 'statusRemessa'
     const result = await db.query (`
             SELECT id, "clienteId", descricao, valor, vencimento, status, "statusRemessa" 
             FROM cobrancas 
@@ -228,6 +256,7 @@ app.get ('/api/cobrancas', async (req, res) => {
     res.json (result.rows);
   } catch (err) {
     console.error ('Erro ao buscar cobranças (GET):', err.message);
+    // Se o erro for "relation cobrancas does not exist", a tabela precisa ser criada no Supabase!
     res
       .status (500)
       .json ({
