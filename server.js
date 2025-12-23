@@ -19,7 +19,7 @@ app.use (express.json ());
 // Esta é a alteração crucial para permitir que o frontend (http://localhost:3000)
 // se conecte ao backend no Render (https://add-creche-bac.onrender.com)
 const allowedOrigins = [
-  'http://localhost:3000', // Permite o desenvolvimento local do frontend
+  'http://localhost:3001', // Permite o desenvolvimento local do frontend
   'https://add-creche-bac.onrender.com', // Opcional: Permite a si mesmo, ou adicione o domínio do seu frontend de produção aqui
 ];
 
