@@ -25,6 +25,8 @@ if (isProduction && connectionUrl) {
         // Necessário para conexões com alguns serviços de nuvem como Supabase
         rejectUnauthorized: false,
       },
+      // ADICIONE ESTA LINHA:
+      family: 4, // Força o cliente a usar IPv4
     });
     db.connect (err => {
       if (err) {
