@@ -121,6 +121,48 @@ app.post ('/api/clientes', async (req, res) => {
   }
 });
 
+// Adicione esta rota de ATUALIZAÇÃO (PUT)
+
+app.put ('/api/clientes/:id', async (req, res) => {
+  if (!db) return res.status (500).send ('Banco de dados não conectado.');
+
+  const {id} = req.params; // Captura o ID da URL (ex: '9')
+  const {nome, email, telefone} = req.body; // Captura os dados do formulário
+
+  if (!nome) {
+    return res
+      .status (400)
+      .json ({error: 'O nome do cliente é obrigatório para atualização.'});
+  }
+
+  try {
+    // Assume que a tabela clientes tem id (TEXT), nome, email e telefone
+    const query = `
+            UPDATE clientes
+            SET nome = $1, email = $2, telefone = $3
+            WHERE id = $4
+            RETURNING *;
+        `;
+    [cite_start]; // O tipo da coluna 'id' no seu SQLite é TEXT[cite: 25], usamos aqui para a query.
+    const values = [nome, email, telefone, id];
+
+    const result = await db.query (query, values);
+
+    if (result.rowCount === 0) {
+      return res
+        .status (404)
+        .json ({error: 'Cliente não encontrado para atualização.'});
+    }
+
+    res.json (result.rows[0]); // Retorna o cliente atualizado
+  } catch (err) {
+    console.error ('Erro ao atualizar cliente:', err.message);
+    res
+      .status (500)
+      .json ({error: 'Erro interno do servidor ao atualizar cliente.'});
+  }
+});
+
 // 7. INICIALIZAÇÃO DO SERVIDOR
 app.listen (port, () => {
   console.log (`🚀 Servidor rodando em http://localhost:${port}`);
