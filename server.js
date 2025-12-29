@@ -104,10 +104,11 @@ app.post ('/api/clientes', async (req, res) => {
       .status (500)
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
-  // Nota: o Frontend ainda envia `contaCorrente`, mas o Backend salva em `conta_corrente`
+  // Recebe dados do Frontend em camelCase
   const {nome, email, telefone, codigo, contaCorrente} = req.body;
 
   if (!nome || !codigo) {
+    // ESTA VALIDAÇÃO CAUSA O ERRO 400 SE OS CAMPOS ESTIVEREM VAZIOS NO FRONTEND
     return res
       .status (400)
       .json ({error: 'Nome e Código do cliente são obrigatórios.'});
@@ -116,14 +117,14 @@ app.post ('/api/clientes', async (req, res) => {
   try {
     const id = uuidv4 ();
 
-    // Query corrigida para usar snake_case: conta_corrente
+    // Query usa snake_case: conta_corrente
     const query =
       'INSERT INTO clientes (id, nome, email, telefone, codigo, conta_corrente) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *';
     const values = [id, nome, email, telefone, codigo, contaCorrente];
 
     const result = await db.query (query, values);
 
-    // Mapeamento para garantir que o Frontend receba a chave correta
+    // Mapeamento de volta para camelCase para o Frontend
     const row = result.rows[0];
     const cliente = {
       id: row.id,
@@ -163,7 +164,7 @@ app.put ('/api/clientes/:id', async (req, res) => {
   }
 
   try {
-    // Query corrigida para usar snake_case: conta_corrente
+    // Query usa snake_case: conta_corrente
     const query = `
             UPDATE clientes
             SET nome = $1, email = $2, telefone = $3, codigo = $4, conta_corrente = $5
@@ -180,6 +181,7 @@ app.put ('/api/clientes/:id', async (req, res) => {
         .json ({error: 'Cliente não encontrado para atualização.'});
     }
 
+    // Mapeamento de volta para camelCase para o Frontend
     const row = result.rows[0];
     const cliente = {
       id: row.id,
@@ -208,12 +210,12 @@ app.get ('/api/clientes', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   try {
-    // Query corrigida para usar snake_case: conta_corrente
+    // Query usa snake_case: conta_corrente
     const result = await db.query (
       'SELECT id, nome, email, telefone, codigo, conta_corrente FROM clientes ORDER BY nome ASC'
     );
 
-    // Mapeamento para garantir que o Frontend receba as chaves em camelCase
+    // Mapeamento de volta para camelCase
     const clientesMapeados = result.rows.map (row => ({
       id: row.id,
       nome: row.nome,
@@ -245,14 +247,14 @@ app.get ('/api/cobrancas', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   try {
-    // Query corrigida para usar snake_case: cliente_id, status_remessa
+    // Query usa snake_case: cliente_id, status_remessa
     const result = await db.query (`
             SELECT id, cliente_id, descricao, valor, vencimento, status, status_remessa, nsa_remessa 
             FROM cobrancas 
             ORDER BY vencimento DESC
         `);
 
-    // Mapeamento para garantir que o Frontend receba as chaves em camelCase
+    // Mapeamento de volta para camelCase
     const cobrancasMapeadas = result.rows.map (row => ({
       id: row.id,
       clienteId: row.cliente_id, // Mapeia para o Frontend
@@ -290,7 +292,7 @@ app.post ('/api/cobrancas', async (req, res) => {
   try {
     const id = uuidv4 ();
 
-    // Query corrigida para usar snake_case: cliente_id, status_remessa
+    // Query usa snake_case: cliente_id, status_remessa
     const query =
       'INSERT INTO cobrancas (id, cliente_id, descricao, valor, vencimento, status, status_remessa, nsa_remessa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *';
     const values = [
@@ -306,7 +308,7 @@ app.post ('/api/cobrancas', async (req, res) => {
 
     const result = await db.query (query, values);
 
-    // Mapeamento para garantir que o Frontend receba a chave correta
+    // Mapeamento de volta para camelCase
     const row = result.rows[0];
     const cobranca = {
       id: row.id,
@@ -344,7 +346,7 @@ app.put ('/api/cobrancas/:id', async (req, res) => {
   }
 
   try {
-    // Query corrigida para usar snake_case: cliente_id
+    // Query usa snake_case: cliente_id
     const query = `
             UPDATE cobrancas
             SET cliente_id = $1, descricao = $2, valor = $3, vencimento = $4, status = $5
@@ -361,6 +363,7 @@ app.put ('/api/cobrancas/:id', async (req, res) => {
         .json ({error: 'Cobrança não encontrada para atualização.'});
     }
 
+    // Mapeamento de volta para camelCase
     const row = result.rows[0];
     const cobranca = {
       id: row.id,
@@ -426,18 +429,17 @@ app.get ('/api/config', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   try {
-    // Query corrigida para usar snake_case
+    // Query usa snake_case: ultimo_nsa_sequencial, parte_fixa_nsa
     const result = await db.query (
       'SELECT id, ultimo_nsa_sequencial, parte_fixa_nsa FROM configuracoes WHERE id = 1'
     );
 
     if (result.rows.length === 0) {
-      // Se não houver configuração, insere
+      // Se não houver configuração, insere e tenta buscar novamente
       await db.query (
         "INSERT INTO configuracoes (id, ultimo_nsa_sequencial, parte_fixa_nsa) VALUES (1, 0, '04') ON CONFLICT (id) DO NOTHING"
       );
 
-      // Tenta buscar novamente
       const retryResult = await db.query (
         'SELECT id, ultimo_nsa_sequencial, parte_fixa_nsa FROM configuracoes WHERE id = 1'
       );
@@ -452,6 +454,7 @@ app.get ('/api/config', async (req, res) => {
       return res.json (config);
     }
 
+    // Mapeamento de volta para camelCase
     const row = result.rows[0];
     const config = {
       id: row.id,
@@ -477,7 +480,6 @@ app.put ('/api/config/:id', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   const {id} = req.params;
-  // O Frontend envia `ultimoNsaSequencial`
   const {ultimoNsaSequencial} = req.body;
 
   if (typeof ultimoNsaSequencial === 'undefined') {
@@ -487,7 +489,7 @@ app.put ('/api/config/:id', async (req, res) => {
   }
 
   try {
-    // Query corrigida para usar snake_case
+    // Query usa snake_case: ultimo_nsa_sequencial
     const query = `
             UPDATE configuracoes
             SET ultimo_nsa_sequencial = $1
@@ -504,6 +506,7 @@ app.put ('/api/config/:id', async (req, res) => {
         .json ({error: 'Configuração não encontrada para atualização.'});
     }
 
+    // Mapeamento de volta para camelCase
     const row = result.rows[0];
     const config = {
       id: row.id,
@@ -539,7 +542,7 @@ app.post ('/api/marcar-remessa', async (req, res) => {
   try {
     const idList = idsParaMarcar.map (id => `'${id}'`).join (', ');
 
-    // Query corrigida para usar snake_case
+    // Query usa snake_case: status_remessa
     const query = `
             UPDATE cobrancas
             SET nsa_remessa = $1, status_remessa = 'Processado'
