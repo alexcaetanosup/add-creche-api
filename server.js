@@ -5,27 +5,24 @@ const {Pool} = require ('pg');
 const cors = require ('cors');
 const dotenv = require ('dotenv');
 const {createClient} = require ('@supabase/supabase-js');
-const {v4: uuidv4} = require ('uuid'); // Para gerar IDs únicos se o Supabase não gerar automaticamente
+const {v4: uuidv4} = require ('uuid');
 
 // Carrega as variáveis de ambiente do arquivo .env
 dotenv.config ();
 
 const app = express ();
-const port = process.env.PORT || 3001; // Usa a porta 3001, ou a porta definida pelo Render
+const port = process.env.PORT || 3001;
 
 // Middleware para habilitar CORS
-// Permite requisições do seu frontend (http://localhost:3000) e outras origens
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://add-creche-bac.onrender.com', // Seu próprio domínio
+  'https://add-creche-bac.onrender.com',
 ];
 
 app.use (
   cors ({
     origin: (origin, callback) => {
-      // Permite requisições sem 'origin' (como apps ou ferramentas como Postman)
       if (!origin) return callback (null, true);
-      // Verifica se a origem está na lista de permitidas
       if (allowedOrigins.indexOf (origin) === -1) {
         const msg = 'A política CORS para esta origem não permite acesso.';
         return callback (new Error (msg), false);
@@ -39,13 +36,12 @@ app.use (
 app.use (express.json ());
 
 // ----------------------------------------------------------------------
-// 1. CONEXÃO COM O BANCO DE DADOS POSTGRESQL (usando Pooler do Supabase)
+// 1. CONEXÃO COM O BANCO DE DADOS POSTGRESQL
 // ----------------------------------------------------------------------
 
 let db;
 
 try {
-  // Configuração de conexão ao PostgreSQL via Pooler do Supabase
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error (
@@ -56,14 +52,11 @@ try {
   db = new Pool ({
     connectionString: connectionString,
     ssl: {
-      rejectUnauthorized: false, // Aceita certificados autoassinados (necessário para alguns ambientes)
+      rejectUnauthorized: false,
     },
-    // Correção crítica para Render/Supabase Pooler: força o uso de IPv4
-    // Evita o erro 'SCRAM-SERVER-FINAL-MESSAGE' (ou relacionados)
     family: 4,
   });
 
-  // Tenta fazer a primeira conexão para validar as credenciais imediatamente
   db
     .connect ()
     .then (() => {
@@ -71,7 +64,6 @@ try {
     })
     .catch (err => {
       console.error ('ERRO: Falha ao conectar ao PostgreSQL:', err);
-      // Se falhar a conexão, o servidor pode continuar rodando, mas as rotas de DB falharão
     });
 } catch (error) {
   console.error (
@@ -81,7 +73,7 @@ try {
 }
 
 // ----------------------------------------------------------------------
-// 2. CONEXÃO COM O CLIENTE SUPABASE ADMIN (Para autenticação e privilégios)
+// 2. CONEXÃO COM O CLIENTE SUPABASE ADMIN
 // ----------------------------------------------------------------------
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -90,7 +82,6 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (supabaseUrl && supabaseKey) {
   const supabaseAdmin = createClient (supabaseUrl, supabaseKey, {
     auth: {
-      // Se precisar de auto-refresh de token do service role (geralmente não é necessário)
       autoRefreshToken: false,
       persistSession: false,
     },
@@ -108,34 +99,32 @@ if (supabaseUrl && supabaseKey) {
 
 // Rota para CRIAR um novo cliente (POST)
 app.post ('/api/clientes', async (req, res) => {
-  // Verifica se a conexão com o DB foi estabelecida
   if (!db)
     return res
       .status (500)
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
-  const {nome, email, telefone} = req.body;
+  const {nome, email, telefone, codigo, contaCorrente} = req.body;
 
-  // Simples validação de campos obrigatórios
-  if (!nome) {
-    return res.status (400).json ({error: 'O nome do cliente é obrigatório.'});
+  if (!nome || !codigo) {
+    return res
+      .status (400)
+      .json ({error: 'Nome e Código do cliente são obrigatórios.'});
   }
 
   try {
-    // Gera um UUID para o 'id' se o Supabase não estiver configurado para fazer isso automaticamente na tabela 'clientes'
-    const id = uuidv4 ();
+    const id = uuidv4 (); // ID gerado pelo NODE.JS
 
-    // QUERY: Confere com a estrutura clientes(id, nome, email, telefone)
+    // Query corrigida para usar 'text' no ID e aspas duplas nas colunas camelCase
     const query =
-      'INSERT INTO clientes (id, nome, email, telefone) VALUES ($1, $2, $3, $4) RETURNING *';
-    const values = [id, nome, email, telefone];
+      'INSERT INTO clientes (id, nome, email, telefone, codigo, "contaCorrente") VALUES ($1, $2, $3, $4, $5, $6) RETURNING *';
+    const values = [id, nome, email, telefone, codigo, contaCorrente];
 
     const result = await db.query (query, values);
 
-    res.status (201).json (result.rows[0]); // Retorna o cliente criado (Status 201 Created)
+    res.status (201).json (result.rows[0]);
   } catch (err) {
     console.error ('Erro ao salvar cliente (POST):', err.message);
-    // Retorna o erro exato do DB no modo de desenvolvimento, ou um genérico em produção
     res.status (500).json ({
       error: 'Erro interno do servidor ao salvar cliente.',
       detail: err.message,
@@ -150,25 +139,25 @@ app.put ('/api/clientes/:id', async (req, res) => {
       .status (500)
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
-  const {id} = req.params; // Captura o ID da URL
-  const {nome, email, telefone} = req.body;
+  const {id} = req.params;
+  const {nome, email, telefone, codigo, contaCorrente} = req.body;
 
-  if (!nome) {
+  if (!nome || !codigo) {
     return res
       .status (400)
-      .json ({error: 'O nome do cliente é obrigatório para atualização.'});
+      .json ({
+        error: 'Nome e Código do cliente são obrigatórios para atualização.',
+      });
   }
 
   try {
-    // QUERY: Confere com a estrutura clientes(nome, email, telefone) e atualiza pelo ID
     const query = `
             UPDATE clientes
-            SET nome = $1, email = $2, telefone = $3
-            WHERE id = $4 
+            SET nome = $1, email = $2, telefone = $3, codigo = $4, "contaCorrente" = $5
+            WHERE id = $6 
             RETURNING *;
         `;
-    // Certifique-se de que o ID da URL está sendo passado como parâmetro na posição $4
-    const values = [nome, email, telefone, id];
+    const values = [nome, email, telefone, codigo, contaCorrente, id];
 
     const result = await db.query (query, values);
 
@@ -178,9 +167,8 @@ app.put ('/api/clientes/:id', async (req, res) => {
         .json ({error: 'Cliente não encontrado para atualização.'});
     }
 
-    res.json (result.rows[0]); // Retorna o cliente atualizado
+    res.json (result.rows[0]);
   } catch (err) {
-    // O erro 'cite_start is not defined' foi corrigido aqui, usando apenas err.message
     console.error ('Erro ao atualizar cliente (PUT):', err.message);
     res.status (500).json ({
       error: 'Erro interno do servidor ao atualizar cliente.',
@@ -198,7 +186,7 @@ app.get ('/api/clientes', async (req, res) => {
 
   try {
     const result = await db.query (
-      'SELECT id, nome, email, telefone FROM clientes ORDER BY nome ASC'
+      'SELECT id, nome, email, telefone, codigo, "contaCorrente" FROM clientes ORDER BY nome ASC'
     );
     res.json (result.rows);
   } catch (err) {
@@ -210,34 +198,10 @@ app.get ('/api/clientes', async (req, res) => {
   }
 });
 
-// Adicione a rota de Cobranças no seu server.js
-// ...
-// app.get ('/api/cobrancas', async (req, res) => {
-//   if (!db)
-//     return res
-//       .status (500)
-//       .send ('Servidor sem conexão ativa com o banco de dados.');
+// ----------------------------------------------------------------------
+// 4. ROTAS CRUD COBRANÇAS
+// ----------------------------------------------------------------------
 
-//   try {
-//     // QUERY: Confere com a estrutura cobrancas(id, clienteId, descricao, valor, vencimento, status, statusRemessa)
-//     const result = await db.query (`
-//             SELECT id, "clienteId", descricao, valor, vencimento, status, "statusRemessa"
-//             FROM cobrancas
-//             ORDER BY vencimento DESC
-//         `);
-//     res.json (result.rows);
-//   } catch (err) {
-//     console.error ('Erro ao buscar cobranças (GET):', err.message);
-//     res
-//       .status (500)
-//       .json ({
-//         error: 'Erro interno do servidor ao buscar cobranças.',
-//         detail: err.message,
-//       });
-//   }
-// });
-
-// ROTAS COBRANÇAS
 // Rota para BUSCAR todas as cobranças (GET)
 app.get ('/api/cobrancas', async (req, res) => {
   if (!db)
@@ -246,28 +210,264 @@ app.get ('/api/cobrancas', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   try {
-    // A query utiliza aspas duplas para colunas com letras maiúsculas ou mixed case,
-    // conforme é comum no PostgreSQL, especialmente para 'clienteId' e 'statusRemessa'
     const result = await db.query (`
-            SELECT id, "clienteId", descricao, valor, vencimento, status, "statusRemessa" 
+            SELECT id, "clienteId", descricao, valor, vencimento, status, "statusRemessa", nsa_remessa 
             FROM cobrancas 
             ORDER BY vencimento DESC
         `);
     res.json (result.rows);
   } catch (err) {
     console.error ('Erro ao buscar cobranças (GET):', err.message);
-    // Se o erro for "relation cobrancas does not exist", a tabela precisa ser criada no Supabase!
-    res
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao buscar cobranças.',
+      detail: err.message,
+    });
+  }
+});
+
+// Rota para CRIAR uma nova cobrança (POST)
+app.post ('/api/cobrancas', async (req, res) => {
+  if (!db)
+    return res
       .status (500)
-      .json ({
-        error: 'Erro interno do servidor ao buscar cobranças.',
-        detail: err.message,
-      });
+      .send ('Servidor sem conexão ativa com o banco de dados.');
+
+  const {clienteId, descricao, valor, vencimento, status} = req.body;
+
+  if (!clienteId || !descricao || !valor || !vencimento) {
+    return res.status (400).json ({error: 'Campos obrigatórios faltando.'});
+  }
+
+  try {
+    const id = uuidv4 (); // ID gerado pelo NODE.JS
+
+    const query =
+      'INSERT INTO cobrancas (id, "clienteId", descricao, valor, vencimento, status, "statusRemessa", nsa_remessa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *';
+    const values = [
+      id,
+      clienteId,
+      descricao,
+      valor,
+      vencimento,
+      status || 'Pendente',
+      'N/A',
+      null,
+    ];
+
+    const result = await db.query (query, values);
+
+    res.status (201).json (result.rows[0]);
+  } catch (err) {
+    console.error ('Erro ao salvar cobrança (POST):', err.message);
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao salvar cobrança.',
+      detail: err.message,
+    });
+  }
+});
+
+// Rota para ATUALIZAR uma cobrança existente (PUT)
+app.put ('/api/cobrancas/:id', async (req, res) => {
+  if (!db)
+    return res
+      .status (500)
+      .send ('Servidor sem conexão ativa com o banco de dados.');
+
+  const {id} = req.params;
+  const {clienteId, descricao, valor, vencimento, status} = req.body;
+
+  if (!clienteId || !descricao || !valor || !vencimento) {
+    return res.status (400).json ({error: 'Campos obrigatórios faltando.'});
+  }
+
+  try {
+    const query = `
+            UPDATE cobrancas
+            SET "clienteId" = $1, descricao = $2, valor = $3, vencimento = $4, status = $5
+            WHERE id = $6 
+            RETURNING *;
+        `;
+    const values = [clienteId, descricao, valor, vencimento, status, id];
+
+    const result = await db.query (query, values);
+
+    if (result.rowCount === 0) {
+      return res
+        .status (404)
+        .json ({error: 'Cobrança não encontrada para atualização.'});
+    }
+
+    res.json (result.rows[0]);
+  } catch (err) {
+    console.error ('Erro ao atualizar cobrança (PUT):', err.message);
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao atualizar cobrança.',
+      detail: err.message,
+    });
+  }
+});
+
+// Rota para DELETAR uma cobrança (DELETE)
+app.delete ('/api/cobrancas/:id', async (req, res) => {
+  if (!db)
+    return res
+      .status (500)
+      .send ('Servidor sem conexão ativa com o banco de dados.');
+
+  const {id} = req.params;
+
+  try {
+    const query = 'DELETE FROM cobrancas WHERE id = $1;';
+    const values = [id];
+
+    const result = await db.query (query, values);
+
+    if (result.rowCount === 0) {
+      return res
+        .status (404)
+        .json ({error: 'Cobrança não encontrada para exclusão.'});
+    }
+
+    res.status (204).send ();
+  } catch (err) {
+    console.error ('Erro ao deletar cobrança (DELETE):', err.message);
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao deletar cobrança.',
+      detail: err.message,
+    });
   }
 });
 
 // ----------------------------------------------------------------------
-// 4. INICIALIZAÇÃO DO SERVIDOR
+// 5. ROTAS DE CONFIGURAÇÃO E AÇÕES
+// ----------------------------------------------------------------------
+
+// Rota para BUSCAR as configurações (GET)
+app.get ('/api/config', async (req, res) => {
+  if (!db)
+    return res
+      .status (500)
+      .send ('Servidor sem conexão ativa com o banco de dados.');
+
+  try {
+    const result = await db.query (
+      'SELECT id, "ultimoNsaSequencial", "parteFixaNsa" FROM configuracoes WHERE id = 1'
+    );
+
+    if (result.rows.length === 0) {
+      // Se não houver configuração (caso a tabela foi criada mas a linha 1 falhou), insere
+      await db.query (
+        'INSERT INTO configuracoes (id, "ultimoNsaSequencial", "parteFixaNsa") VALUES (1, 0, \'04\') ON CONFLICT (id) DO NOTHING'
+      );
+
+      // Tenta buscar novamente
+      const retryResult = await db.query (
+        'SELECT id, "ultimoNsaSequencial", "parteFixaNsa" FROM configuracoes WHERE id = 1'
+      );
+      return res.json (
+        retryResult.rows[0] || {
+          id: 1,
+          ultimoNsaSequencial: 0,
+          parteFixaNsa: '04',
+        }
+      );
+    }
+
+    res.json (result.rows[0]);
+  } catch (err) {
+    console.error ('Erro ao buscar config (GET):', err.message);
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao buscar configurações.',
+      detail: err.message,
+    });
+  }
+});
+
+// Rota para ATUALIZAR as configurações (PUT)
+app.put ('/api/config/:id', async (req, res) => {
+  if (!db)
+    return res
+      .status (500)
+      .send ('Servidor sem conexão ativa com o banco de dados.');
+
+  const {id} = req.params;
+  const {ultimoNsaSequencial} = req.body;
+
+  if (typeof ultimoNsaSequencial === 'undefined') {
+    return res
+      .status (400)
+      .json ({error: 'O campo ultimoNsaSequencial é obrigatório.'});
+  }
+
+  try {
+    const query = `
+            UPDATE configuracoes
+            SET "ultimoNsaSequencial" = $1
+            WHERE id = $2
+            RETURNING *;
+        `;
+    const values = [ultimoNsaSequencial, id];
+
+    const result = await db.query (query, values);
+
+    if (result.rowCount === 0) {
+      return res
+        .status (404)
+        .json ({error: 'Configuração não encontrada para atualização.'});
+    }
+
+    res.json (result.rows[0]);
+  } catch (err) {
+    console.error ('Erro ao atualizar config (PUT):', err.message);
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao atualizar config.',
+      detail: err.message,
+    });
+  }
+});
+
+// Rota para MARCAR cobranças como processadas na remessa (POST)
+app.post ('/api/marcar-remessa', async (req, res) => {
+  if (!db)
+    return res
+      .status (500)
+      .send ('Servidor sem conexão ativa com o banco de dados.');
+
+  const {idsParaMarcar, nsaDaRemessa} = req.body;
+
+  if (!Array.isArray (idsParaMarcar) || !nsaDaRemessa) {
+    return res
+      .status (400)
+      .json ({error: 'IDs e NSA da remessa são obrigatórios.'});
+  }
+
+  try {
+    const idList = idsParaMarcar.map (id => `'${id}'`).join (', ');
+
+    const query = `
+            UPDATE cobrancas
+            SET nsa_remessa = $1, "statusRemessa" = 'Processado'
+            WHERE id IN (${idList})
+            RETURNING id;
+        `;
+    const values = [nsaDaRemessa];
+
+    const result = await db.query (query, values);
+
+    res.json ({
+      message: `Marcadas ${result.rowCount} cobranças para o NSA ${nsaDaRemessa}.`,
+    });
+  } catch (err) {
+    console.error ('Erro ao marcar remessa (POST):', err.message);
+    res.status (500).json ({
+      error: 'Erro interno do servidor ao marcar remessa.',
+      detail: err.message,
+    });
+  }
+});
+
+// ----------------------------------------------------------------------
+// 6. INICIALIZAÇÃO DO SERVIDOR
 // ----------------------------------------------------------------------
 
 app.listen (port, () => {
