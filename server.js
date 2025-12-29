@@ -104,6 +104,7 @@ app.post ('/api/clientes', async (req, res) => {
       .status (500)
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
+  // Nota: o Frontend ainda envia `contaCorrente`, mas o Backend salva em `conta_corrente`
   const {nome, email, telefone, codigo, contaCorrente} = req.body;
 
   if (!nome || !codigo) {
@@ -113,16 +114,27 @@ app.post ('/api/clientes', async (req, res) => {
   }
 
   try {
-    const id = uuidv4 (); // ID gerado pelo NODE.JS
+    const id = uuidv4 ();
 
-    // Query corrigida para usar 'text' no ID e aspas duplas nas colunas camelCase
+    // Query corrigida para usar snake_case: conta_corrente
     const query =
-      'INSERT INTO clientes (id, nome, email, telefone, codigo, "contaCorrente") VALUES ($1, $2, $3, $4, $5, $6) RETURNING *';
+      'INSERT INTO clientes (id, nome, email, telefone, codigo, conta_corrente) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *';
     const values = [id, nome, email, telefone, codigo, contaCorrente];
 
     const result = await db.query (query, values);
 
-    res.status (201).json (result.rows[0]);
+    // Mapeamento para garantir que o Frontend receba a chave correta
+    const row = result.rows[0];
+    const cliente = {
+      id: row.id,
+      nome: row.nome,
+      email: row.email,
+      telefone: row.telefone,
+      codigo: row.codigo,
+      contaCorrente: row.conta_corrente, // Mapeia conta_corrente para contaCorrente
+    };
+
+    res.status (201).json (cliente);
   } catch (err) {
     console.error ('Erro ao salvar cliente (POST):', err.message);
     res.status (500).json ({
@@ -151,9 +163,10 @@ app.put ('/api/clientes/:id', async (req, res) => {
   }
 
   try {
+    // Query corrigida para usar snake_case: conta_corrente
     const query = `
             UPDATE clientes
-            SET nome = $1, email = $2, telefone = $3, codigo = $4, "contaCorrente" = $5
+            SET nome = $1, email = $2, telefone = $3, codigo = $4, conta_corrente = $5
             WHERE id = $6 
             RETURNING *;
         `;
@@ -167,7 +180,17 @@ app.put ('/api/clientes/:id', async (req, res) => {
         .json ({error: 'Cliente não encontrado para atualização.'});
     }
 
-    res.json (result.rows[0]);
+    const row = result.rows[0];
+    const cliente = {
+      id: row.id,
+      nome: row.nome,
+      email: row.email,
+      telefone: row.telefone,
+      codigo: row.codigo,
+      contaCorrente: row.conta_corrente, // Mapeia para o Frontend
+    };
+
+    res.json (cliente);
   } catch (err) {
     console.error ('Erro ao atualizar cliente (PUT):', err.message);
     res.status (500).json ({
@@ -185,10 +208,22 @@ app.get ('/api/clientes', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   try {
+    // Query corrigida para usar snake_case: conta_corrente
     const result = await db.query (
-      'SELECT id, nome, email, telefone, codigo, "contaCorrente" FROM clientes ORDER BY nome ASC'
+      'SELECT id, nome, email, telefone, codigo, conta_corrente FROM clientes ORDER BY nome ASC'
     );
-    res.json (result.rows);
+
+    // Mapeamento para garantir que o Frontend receba as chaves em camelCase
+    const clientesMapeados = result.rows.map (row => ({
+      id: row.id,
+      nome: row.nome,
+      email: row.email,
+      telefone: row.telefone,
+      codigo: row.codigo,
+      contaCorrente: row.conta_corrente, // Mapeia para o Frontend
+    }));
+
+    res.json (clientesMapeados);
   } catch (err) {
     console.error ('Erro ao buscar clientes (GET):', err.message);
     res.status (500).json ({
@@ -210,12 +245,26 @@ app.get ('/api/cobrancas', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   try {
+    // Query corrigida para usar snake_case: cliente_id, status_remessa
     const result = await db.query (`
-            SELECT id, "clienteId", descricao, valor, vencimento, status, "statusRemessa", nsa_remessa 
+            SELECT id, cliente_id, descricao, valor, vencimento, status, status_remessa, nsa_remessa 
             FROM cobrancas 
             ORDER BY vencimento DESC
         `);
-    res.json (result.rows);
+
+    // Mapeamento para garantir que o Frontend receba as chaves em camelCase
+    const cobrancasMapeadas = result.rows.map (row => ({
+      id: row.id,
+      clienteId: row.cliente_id, // Mapeia para o Frontend
+      descricao: row.descricao,
+      valor: row.valor,
+      vencimento: row.vencimento,
+      status: row.status,
+      statusRemessa: row.status_remessa, // Mapeia para o Frontend
+      nsa_remessa: row.nsa_remessa,
+    }));
+
+    res.json (cobrancasMapeadas);
   } catch (err) {
     console.error ('Erro ao buscar cobranças (GET):', err.message);
     res.status (500).json ({
@@ -239,10 +288,11 @@ app.post ('/api/cobrancas', async (req, res) => {
   }
 
   try {
-    const id = uuidv4 (); // ID gerado pelo NODE.JS
+    const id = uuidv4 ();
 
+    // Query corrigida para usar snake_case: cliente_id, status_remessa
     const query =
-      'INSERT INTO cobrancas (id, "clienteId", descricao, valor, vencimento, status, "statusRemessa", nsa_remessa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *';
+      'INSERT INTO cobrancas (id, cliente_id, descricao, valor, vencimento, status, status_remessa, nsa_remessa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *';
     const values = [
       id,
       clienteId,
@@ -256,7 +306,20 @@ app.post ('/api/cobrancas', async (req, res) => {
 
     const result = await db.query (query, values);
 
-    res.status (201).json (result.rows[0]);
+    // Mapeamento para garantir que o Frontend receba a chave correta
+    const row = result.rows[0];
+    const cobranca = {
+      id: row.id,
+      clienteId: row.cliente_id, // Mapeia para o Frontend
+      descricao: row.descricao,
+      valor: row.valor,
+      vencimento: row.vencimento,
+      status: row.status,
+      statusRemessa: row.status_remessa, // Mapeia para o Frontend
+      nsa_remessa: row.nsa_remessa,
+    };
+
+    res.status (201).json (cobranca);
   } catch (err) {
     console.error ('Erro ao salvar cobrança (POST):', err.message);
     res.status (500).json ({
@@ -281,9 +344,10 @@ app.put ('/api/cobrancas/:id', async (req, res) => {
   }
 
   try {
+    // Query corrigida para usar snake_case: cliente_id
     const query = `
             UPDATE cobrancas
-            SET "clienteId" = $1, descricao = $2, valor = $3, vencimento = $4, status = $5
+            SET cliente_id = $1, descricao = $2, valor = $3, vencimento = $4, status = $5
             WHERE id = $6 
             RETURNING *;
         `;
@@ -297,7 +361,19 @@ app.put ('/api/cobrancas/:id', async (req, res) => {
         .json ({error: 'Cobrança não encontrada para atualização.'});
     }
 
-    res.json (result.rows[0]);
+    const row = result.rows[0];
+    const cobranca = {
+      id: row.id,
+      clienteId: row.cliente_id, // Mapeia para o Frontend
+      descricao: row.descricao,
+      valor: row.valor,
+      vencimento: row.vencimento,
+      status: row.status,
+      statusRemessa: row.status_remessa, // Mapeia para o Frontend
+      nsa_remessa: row.nsa_remessa,
+    };
+
+    res.json (cobranca);
   } catch (err) {
     console.error ('Erro ao atualizar cobrança (PUT):', err.message);
     res.status (500).json ({
@@ -350,30 +426,40 @@ app.get ('/api/config', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   try {
+    // Query corrigida para usar snake_case
     const result = await db.query (
-      'SELECT id, "ultimoNsaSequencial", "parteFixaNsa" FROM configuracoes WHERE id = 1'
+      'SELECT id, ultimo_nsa_sequencial, parte_fixa_nsa FROM configuracoes WHERE id = 1'
     );
 
     if (result.rows.length === 0) {
-      // Se não houver configuração (caso a tabela foi criada mas a linha 1 falhou), insere
+      // Se não houver configuração, insere
       await db.query (
-        'INSERT INTO configuracoes (id, "ultimoNsaSequencial", "parteFixaNsa") VALUES (1, 0, \'04\') ON CONFLICT (id) DO NOTHING'
+        "INSERT INTO configuracoes (id, ultimo_nsa_sequencial, parte_fixa_nsa) VALUES (1, 0, '04') ON CONFLICT (id) DO NOTHING"
       );
 
       // Tenta buscar novamente
       const retryResult = await db.query (
-        'SELECT id, "ultimoNsaSequencial", "parteFixaNsa" FROM configuracoes WHERE id = 1'
+        'SELECT id, ultimo_nsa_sequencial, parte_fixa_nsa FROM configuracoes WHERE id = 1'
       );
-      return res.json (
-        retryResult.rows[0] || {
-          id: 1,
-          ultimoNsaSequencial: 0,
-          parteFixaNsa: '04',
-        }
-      );
+
+      const row = retryResult.rows[0];
+      const config = {
+        id: row.id,
+        ultimoNsaSequencial: row.ultimo_nsa_sequencial, // Mapeia para o Frontend
+        parteFixaNsa: row.parte_fixa_nsa, // Mapeia para o Frontend
+      };
+
+      return res.json (config);
     }
 
-    res.json (result.rows[0]);
+    const row = result.rows[0];
+    const config = {
+      id: row.id,
+      ultimoNsaSequencial: row.ultimo_nsa_sequencial, // Mapeia para o Frontend
+      parteFixaNsa: row.parte_fixa_nsa, // Mapeia para o Frontend
+    };
+
+    res.json (config);
   } catch (err) {
     console.error ('Erro ao buscar config (GET):', err.message);
     res.status (500).json ({
@@ -391,6 +477,7 @@ app.put ('/api/config/:id', async (req, res) => {
       .send ('Servidor sem conexão ativa com o banco de dados.');
 
   const {id} = req.params;
+  // O Frontend envia `ultimoNsaSequencial`
   const {ultimoNsaSequencial} = req.body;
 
   if (typeof ultimoNsaSequencial === 'undefined') {
@@ -400,9 +487,10 @@ app.put ('/api/config/:id', async (req, res) => {
   }
 
   try {
+    // Query corrigida para usar snake_case
     const query = `
             UPDATE configuracoes
-            SET "ultimoNsaSequencial" = $1
+            SET ultimo_nsa_sequencial = $1
             WHERE id = $2
             RETURNING *;
         `;
@@ -416,7 +504,14 @@ app.put ('/api/config/:id', async (req, res) => {
         .json ({error: 'Configuração não encontrada para atualização.'});
     }
 
-    res.json (result.rows[0]);
+    const row = result.rows[0];
+    const config = {
+      id: row.id,
+      ultimoNsaSequencial: row.ultimo_nsa_sequencial, // Mapeia para o Frontend
+      parteFixaNsa: row.parte_fixa_nsa, // Mapeia para o Frontend
+    };
+
+    res.json (config);
   } catch (err) {
     console.error ('Erro ao atualizar config (PUT):', err.message);
     res.status (500).json ({
@@ -444,9 +539,10 @@ app.post ('/api/marcar-remessa', async (req, res) => {
   try {
     const idList = idsParaMarcar.map (id => `'${id}'`).join (', ');
 
+    // Query corrigida para usar snake_case
     const query = `
             UPDATE cobrancas
-            SET nsa_remessa = $1, "statusRemessa" = 'Processado'
+            SET nsa_remessa = $1, status_remessa = 'Processado'
             WHERE id IN (${idList})
             RETURNING id;
         `;
