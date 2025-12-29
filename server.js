@@ -15,7 +15,7 @@ const port = process.env.PORT || 3001;
 
 // Middleware para habilitar CORS
 const allowedOrigins = [
-  'http://localhost:3000',
+  'http://localhost:3001',
   'https://add-creche-bac.onrender.com',
 ];
 
@@ -156,11 +156,9 @@ app.put ('/api/clientes/:id', async (req, res) => {
   const {nome, email, telefone, codigo, contaCorrente} = req.body;
 
   if (!nome || !codigo) {
-    return res
-      .status (400)
-      .json ({
-        error: 'Nome e Código do cliente são obrigatórios para atualização.',
-      });
+    return res.status (400).json ({
+      error: 'Nome e Código do cliente são obrigatórios para atualização.',
+    });
   }
 
   try {
